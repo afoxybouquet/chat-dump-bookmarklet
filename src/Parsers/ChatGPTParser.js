@@ -2,6 +2,7 @@ import '../../types.js'
 import { createConversationItem } from '../ConversationProcessor.js'
 import { t } from '../I18n.js'
 import { apiGet, marker, fence } from '../RemoteUtils.js'
+import { stripGenUI } from '../GenUISanitizer.js'
 
 const CONVERSATION_PATH = /\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
 
@@ -37,13 +38,14 @@ function _messageMarkdown(message) {
 	if (content.content_type === 'text') {
 		return (content.parts || [])
 			.filter((p) => typeof p === 'string')
+			.map((p) => stripGenUI(p))
 			.join('\n\n')
 			.trim()
 	}
 	if (content.content_type === 'multimodal_text') {
 		return (content.parts || [])
 			.map((p) => {
-				if (typeof p === 'string') return p.trim()
+				if (typeof p === 'string') return stripGenUI(p).trim()
 				if (p && p.content_type === 'image_asset_pointer') return `> ${marker(t('attachment'), 'image')}`
 				return ''
 			})
