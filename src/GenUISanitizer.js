@@ -53,19 +53,13 @@ function convertCodeBlocks(text) {
 // --- 2. Generic container unwrapping --------------------------------------
 // box / row / divider / caption / title / text / WritingBlock: these are pure
 // layout/typography wrappers with no Markdown equivalent. Keep the inner
-// content, drop the tag and its props.
-const CONTAINER_TAGS = ['box', 'row', 'divider', 'caption', 'title', 'text', 'WritingBlock']
+// content, drop the tag and its props (one regex covers open, close, and
+// self-closing forms: a self-closer still ends in `/>`, which `[^>]*>`
+// already matches).
+const CONTAINER_RE = /<\/?(?:box|row|divider|caption|title|text|WritingBlock)\b[^>]*>/g
 
 function unwrapContainers(text) {
-	let out = text
-	for (const tag of CONTAINER_TAGS) {
-		// paired tags: <tag ...>...</tag> -> ...
-		out = out.replace(new RegExp(`<${tag}\\b[^>]*>`, 'g'), '')
-		out = out.replace(new RegExp(`<\\/${tag}>`, 'g'), '')
-		// self-closing: <tag .../> -> (nothing, e.g. empty <divider/>)
-		out = out.replace(new RegExp(`<${tag}\\b[^>]*\\/>`, 'g'), '')
-	}
-	return out
+	return text.replace(CONTAINER_RE, '')
 }
 
 // --- 3. {#each}/{@body} template blocks -----------------------------------
@@ -142,6 +136,26 @@ function stripUnknownTags(text) {
 	return out
 }
 
+// --- 5. Leftover JSX indentation -----------------------------------------
+// Unwrapping box/row/text/caption/title/WritingBlock removes the tags but
+// not the indentation whitespace those lines had as nested JSX source. A
+// line left with >=4 leading spaces/tabs is then misread by Markdown as an
+// "indented code block" (a monospaced, bordered box in Obsidian). Strip
+// that leftover indentation, but never touch text inside a REAL fenced code
+// block (``` / ~~~), since convertCodeBlocks() already emitted those and
+// their content must survive byte-for-byte.
+function stripStrayIndentation(text) {
+	let inFence = false
+	return text
+		.split('\n')
+		.map((line) => {
+			const isFence = /^\s*(`{3,}|~{3,})/.test(line)
+			if (isFence) inFence = !inFence
+			return isFence || inFence ? line : line.replace(/^[ 	]{4,}/, '')
+		})
+		.join('\n')
+}
+
 function collapseBlankLines(text) {
 	return text
 		.split('\n')
@@ -172,6 +186,7 @@ export function stripGenUI(text) {
 	out = unwrapContainers(out)
 	out = stripLeftoverExpressions(out)
 	out = stripUnknownTags(out)
+	out = stripStrayIndentation(out)
 	out = collapseBlankLines(out)
 	return out
 }

@@ -56,10 +56,48 @@ Preserve substantive reasoning.</WritingBlock>`,
 		expectIncludes: ['This is ordinary prose with *no* special markup, just **Markdown** and a [link](https://example.com).'],
 		expectExcludes: [],
 	},
+	{
+		name: 'orphaned box-grid indentation is stripped (was misread as an indented code block)',
+		input: `<box gap={3}>
+  <row align="start" gap={3}>
+    <box flex="1" gap={1}>
+      **1. Extract: What is worth preserving?**
+
+      Recover important knowledge from the full discussion.
+    </box>
+  </row>
+</box>`,
+		expectIncludes: ['**1. Extract: What is worth preserving?**', 'Recover important knowledge from the full discussion.'],
+		expectExcludes: ['    **1. Extract', '      Recover important knowledge'],
+	},
+	{
+		name: 'real fenced code indentation is preserved even with surrounding GenUI markup',
+		input: `<box gap={2}>
+  <CodeBlock language="python" editable>
+def f():
+    return 1
+  </CodeBlock>
+</box>`,
+		expectIncludes: ['```python', 'def f():\n    return 1', '```'],
+		expectExcludes: [],
+	},
+	{
+		name: "user's own brace-delimited pseudocode is never passed through stripGenUI in the first place (role-scoping lives in ChatGPTParser, not here) — sanity-check stripGenUI alone would still mangle it if misapplied",
+		input: `config = {\n  evidence: {\n    instruction: "Re-examine the source material.",\n    priority: "high"\n  }\n}`,
+		// stripGenUI has no way to know this is user text vs. a GenUI binding,
+		// so this case documents the behavior this module's caller must guard
+		// against by only invoking it on assistant content (see
+		// remote-chatgpt.js's 'user brace-syntax prompt untouched' check).
+		skip: true,
+	},
 ]
 
 let failures = 0
 for (const c of cases) {
+	if (c.skip) {
+		console.log(`SKIP [${c.name}]`)
+		continue
+	}
 	const out = stripGenUI(c.input)
 	let ok = true
 	for (const inc of c.expectIncludes) {

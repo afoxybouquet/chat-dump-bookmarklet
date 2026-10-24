@@ -17,7 +17,7 @@ Object.defineProperty(global, 'navigator', { value: dom.window.navigator, config
 const msg = (id, parent, children, message) => ({ id, parent, children, message })
 const conversation = {
 	title: 'GPT test conversation',
-	current_node: 'n6',
+	current_node: 'n8',
 	mapping: {
 		root: msg('root', null, ['n1'], null),
 		n1: msg('n1', 'root', ['n2', 'n2-abandoned'], {
@@ -47,9 +47,27 @@ const conversation = {
 			author: { role: 'user' },
 			content: { content_type: 'text', parts: ['Second question'] },
 		}),
-		n6: msg('n6', 'n5', [], {
+		n6: msg('n6', 'n5', ['n7'], {
 			author: { role: 'assistant' },
 			content: { content_type: 'text', parts: ['Second answer'] },
+		}),
+		// user prompt using brace-heavy pseudocode syntax (Ruby-style hash):
+		// must survive byte-for-byte. GenUI sanitization must never run on
+		// user turns, only assistant turns.
+		n7: msg('n7', 'n6', ['n8'], {
+			author: { role: 'user' },
+			content: {
+				content_type: 'text',
+				parts: ['config = {\n  evidence: {\n    instruction: "Re-examine the source material.",\n    priority: "high"\n  }\n}'],
+			},
+		}),
+		// assistant canvas-answer turn: GenUI DSL must still be sanitized
+		n8: msg('n8', 'n7', [], {
+			author: { role: 'assistant' },
+			content: {
+				content_type: 'text',
+				parts: ['<box gap={2}>\n        **Indented inside a box**\n      </box>\n<Cite ref="x"/>'],
+			},
 		}),
 	},
 }
@@ -80,7 +98,7 @@ const check = (label, cond) => {
 }
 
 check('bearer token sent', bearerSeen === 'Bearer tok-123')
-check('4 items (2 prompts + 2 merged responses)', remote && remote.items.length === 4)
+check('6 items (3 prompts + 3 merged responses)', remote && remote.items.length === 6)
 check('title from API', remote.title === 'GPT test conversation')
 
 const md = formatAsMarkdown(processConversations(remote.items), remote.title)
@@ -89,6 +107,12 @@ check('abandoned branch excluded', !md.includes('OLD ANSWER'))
 check('hidden system message excluded', !md.includes('system noise'))
 check('attachment listed', md.includes('data.csv'))
 check('second turn present', md.includes('Second question') && md.includes('Second answer'))
+check(
+	'user brace-syntax prompt untouched by GenUI sanitizer',
+	md.includes('evidence: {') && md.includes('instruction: "Re-examine the source material."') && md.includes('priority: "high"'),
+)
+check('assistant GenUI box unwrapped and de-indented', md.includes('**Indented inside a box**') && !md.includes('      **Indented inside a box**'))
+check('assistant GenUI Cite/box tags stripped', !md.includes('<box') && !md.includes('<Cite'))
 
 if (checks.some(([, cond]) => !cond)) {
 	process.exit(1)

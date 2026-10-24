@@ -31,21 +31,27 @@ function _activeBranch(data) {
  * Converts a single message's content to Markdown. Returns an empty string
  * for content that must not be exported (thoughts, hidden context).
  * @param {object} message - A mapping-node message.
+ * @param {boolean} sanitizeGenUI - Whether to run the canvas/generative-UI
+ *   sanitizer. True only for assistant messages: that DSL is something the
+ *   model emits, never something the user typed. Running it on user prompts
+ *   risks corrupting legitimate `{...}` content the user wrote themselves
+ *   (object literals, Ruby hashes, JSON, etc).
  * @returns {string} The Markdown for the message.
  */
-function _messageMarkdown(message) {
+function _messageMarkdown(message, sanitizeGenUI) {
 	const content = message.content || {}
+	const clean = (s) => (sanitizeGenUI ? stripGenUI(s) : s)
 	if (content.content_type === 'text') {
 		return (content.parts || [])
 			.filter((p) => typeof p === 'string')
-			.map((p) => stripGenUI(p))
+			.map((p) => clean(p))
 			.join('\n\n')
 			.trim()
 	}
 	if (content.content_type === 'multimodal_text') {
 		return (content.parts || [])
 			.map((p) => {
-				if (typeof p === 'string') return stripGenUI(p).trim()
+				if (typeof p === 'string') return clean(p).trim()
 				if (p && p.content_type === 'image_asset_pointer') return `> ${marker(t('attachment'), 'image')}`
 				return ''
 			})
@@ -121,13 +127,13 @@ const ChatGPTParser = {
 			}
 			if (role === 'user') {
 				flushResponse()
-				const markdown = _messageMarkdown(message)
+				const markdown = _messageMarkdown(message, false)
 				const attachments = _messageAttachments(message)
 				if (markdown || attachments.length) {
 					items.push(createConversationItem({ role: 'PROMPT', num: ++promptNum, markdown, attachments }))
 				}
 			} else if (role === 'assistant') {
-				const markdown = _messageMarkdown(message)
+				const markdown = _messageMarkdown(message, true)
 				if (markdown) {
 					responseParts.push(markdown)
 				}
